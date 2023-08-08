@@ -17,6 +17,9 @@ output_file_2_2 = 'attitude_log_2_desired.csv'
 output_file_3_1 = 'attitude_log_3_estimated.csv'
 output_file_3_2 = 'attitude_log_3_desired.csv'
 
+output_file_4_1 = 'attitude_log_4_estimated.csv'
+output_file_4_2 = 'attitude_log_4_desired.csv'
+
 # 버그 리포트 파일 
 bug_report_file = 'bug_report.csv'
 
@@ -32,6 +35,10 @@ with open(output_file_2_2, 'w') as f:
 with open(output_file_3_1, 'w') as f:
     f.write('Timestamp,q1,q2,q3,q4\n')
 with open(output_file_3_2, 'w') as f:
+    f.write('Timestamp,q1_d,q2_d,q3_d,q4_d\n')
+with open(output_file_4_1, 'w') as f:
+    f.write('Timestamp,q1,q2,q3,q4\n')
+with open(output_file_4_2, 'w') as f:
     f.write('Timestamp,q1_d,q2_d,q3_d,q4_d\n')
 
 # 버그 리포트 파일 생성
@@ -414,6 +421,123 @@ def log_attitude_3_target(the_connection, output_file):
             # 예외 처리
             print(f"Error: {e}")
 
+#Attitude log record
+def log_attitude_4(the_connection, output_file):
+    msg = None
+    logging_started = False
+    print("log4 start")
+    # ATTITUDE 메시지 구독
+    while True:
+        try:
+            # 메시지 수신 (로그 주기 설정에 따라 메시지가 더 자주 수신됨)
+            while msg is None:
+                msg = the_connection.recv_match()
+            
+            if logging_started:
+                if msg.get_type() == 'ATTITUDE_QUATERNION':
+                    # mission_item이 업데이트된 경우에만 로그 기록
+                    timestamp = msg.time_boot_ms
+                    q1, q2, q3, q4 = msg.q1, msg.q2, msg.q3, msg.q4
+
+                    # 로그 기록
+                    with open(output_file, 'a') as f:
+                        f.write(f'{timestamp},{q1},{q2},{q3},{q4}\n')
+
+            
+            if msg.get_type() == 'MISSION_ITEM_REACHED':
+                seq = msg.seq
+                print(seq)
+
+                if seq == 0:
+                    logging_started = True
+
+                if seq == (total_mission_items -1):
+                    break
+
+            msg = None
+
+        except KeyboardInterrupt:
+            # Ctrl+C로 프로그램 종료
+            break
+
+        except Exception as e:
+            # 예외 처리
+            print(f"Error: {e}")
+
+#Attitude log record
+def log_attitude_4_target(the_connection, output_file):
+    msg = None
+    logging_started = False
+    print("log4 start")
+    # ATTITUDE 메시지 구독
+    while True:
+        try:
+            # 메시지 수신 (로그 주기 설정에 따라 메시지가 더 자주 수신됨)
+            while msg is None:
+                msg = the_connection.recv_match()
+            
+            if logging_started:
+                if msg.get_type() == 'ATTITUDE_TARGET':
+                    # mission_item이 업데이트된 경우에만 로그 기록
+                    timestamp = msg.time_boot_ms
+                    q1_d, q2_d, q3_d, q4_d = msg.q
+
+                    # 로그 기록
+                    with open(output_file, 'a') as f:
+                        f.write(f'{timestamp},{q1_d},{q2_d},{q3_d},{q4_d}\n')
+
+            
+            if msg.get_type() == 'MISSION_ITEM_REACHED':
+                seq = msg.seq
+                print(seq)
+
+                if seq == 0:
+                    logging_started = True
+
+                if seq == (total_mission_items -1):
+                    break
+
+            msg = None
+
+        except KeyboardInterrupt:
+            # Ctrl+C로 프로그램 종료
+            break
+
+        except Exception as e:
+            # 예외 처리
+            print(f"Error: {e}")
+
+def case_sim(the_connection, mission_waypoints, file1, file2, i):
+    
+    upload_mission(the_connection, mission_waypoints)
+    arm(the_connection)
+    takeoff(the_connection)
+    start_mission(the_connection)
+    
+    # 별도의 스레드로 ATTITUDE 메시지 로깅 시작
+    log_function_name = f"log_attitude_{i}"
+    log_function_name_target = f"log_attitude_{i}_target"
+
+    log_thread = threading.Thread(target=globals()[log_function_name], args=(the_connection, file1))
+    log_thread_target = threading.Thread(target=globals()[log_function_name_target], args=(the_connection, file2))
+    log_thread.start()
+    log_thread_target.start()
+    
+    # ATTITUDE 메시지 로깅 스레드 종료
+    log_thread.join()
+    log_thread_target.join()
+
+    print("Logging completed.")
+    set_return(the_connection)
+    time.sleep(50)
+
+    #착륙
+    land(the_connection)
+    time.sleep(20)
+    disarm(the_connection)
+    time.sleep(10)
+
+
 #DTW is a cost function to compare the two log files.
 def dtw_compute(file1, file2):
     df1 = pd.read_csv(file1)
@@ -463,89 +587,9 @@ if __name__ == "__main__":
     
     total_mission_items = len(mission_waypoints)  # 미션 아이템의 총 개수
 
-    
-    #1번째 input simulation 시작
-    upload_mission(the_connection, mission_waypoints)
-    arm(the_connection)
-    takeoff(the_connection)
-    start_mission(the_connection)
-
-    
-    # 별도의 스레드로 ATTITUDE 메시지 로깅 시작
-    log_thread = threading.Thread(target=log_attitude_1, args=(the_connection, output_file_1_1))
-    log_thread_target = threading.Thread(target=log_attitude_1_target, args=(the_connection, output_file_1_2))
-    log_thread.start()
-    log_thread_target.start()
-    
-    # ATTITUDE 메시지 로깅 스레드 종료
-    log_thread.join()
-    log_thread_target.join()
-
-    print("Logging completed.")
-    set_return(the_connection)
-    time.sleep(50)
-
-    #착륙
-    land(the_connection)
-    time.sleep(20)
-    disarm(the_connection)
-    time.sleep(20)
-
-    #2번째 input simulation 시작
-    upload_mission(the_connection, mission_waypoints)
-    arm(the_connection)
-    takeoff(the_connection)
-    start_mission(the_connection)
-
-    # 별도의 스레드로 ATTITUDE 메시지 로깅 시작
-    log_thread = threading.Thread(target=log_attitude_2, args=(the_connection, output_file_2_1))
-    log_thread_target = threading.Thread(target=log_attitude_2_target, args=(the_connection, output_file_2_2))
-    log_thread.start()
-    log_thread_target.start()
-
-    # ATTITUDE 메시지 로깅 스레드 종료
-    log_thread.join()
-    log_thread_target.join()
-
-    print("Logging completed.")
-    set_return(the_connection)
-    time.sleep(50)
-    
-    #착륙
-    land(the_connection)
-    time.sleep(20)
-    disarm(the_connection)
-    time.sleep(20)
-
-    #3번째 input simulation 시작
-    upload_mission(the_connection, mission_waypoints)
-    arm(the_connection)
-    takeoff(the_connection)
-    start_mission(the_connection)
-
-    # 별도의 스레드로 ATTITUDE 메시지 로깅 시작
-    log_thread = threading.Thread(target=log_attitude_3, args=(the_connection, output_file_3_1))
-    log_thread_target = threading.Thread(target=log_attitude_3_target, args=(the_connection, output_file_3_2))
-    log_thread.start()
-    log_thread_target.start()
-
-    # ATTITUDE 메시지 로깅 스레드 종료
-    log_thread.join()
-    log_thread_target.join()
-
-    print("Logging completed.")
-    set_return(the_connection)
-    time.sleep(50)
-
-    #착륙
-    land(the_connection)
-    time.sleep(20)
-    disarm(the_connection)
-    time.sleep(20)
+    for i in range (1,5):
+        output_file1 = f"output_file_{i}_1"
+        output_file2 = f"output_file_{i}_2"
+        case_sim(the_connection, mission_waypoints, globals()[output_file1], globals()[output_file2], i)
 
     print("done!")
-"""
-    for mission_item in mission_waypoints:
-        print("--Message Read " + str(the_connection.recv_match(type="MISSION_ITEM_REACHED", condition = "MISSION_ITEM_REACHED.seq == {0}".format(mission_item.seq), blocking = True)))
-        """
-        #here was the original place
