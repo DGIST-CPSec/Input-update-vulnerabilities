@@ -5,6 +5,7 @@ import threading
 import numpy as np
 import dtw
 import pandas as pd
+import random
 
 
 # 출력 파일명 설정
@@ -49,9 +50,14 @@ with open(bug_report_file, 'w') as f:
 # 드론에 연결
 #master = mavutil.mavlink_connection('udpin:0.0.0.0:14550')
 all_mission_items_reached = False
-global total_mission_items
-total_mission_items = 0
 
+
+total_mission_items = 0
+rollrate_target = 0
+rollrate_current = 0
+rollrate_error = 0
+input_1 = 210
+input_2 = 180
 
 #Class for formating the mission item
 class mission_item:
@@ -164,6 +170,12 @@ def log_attitude_1(the_connection, output_file):
     msg = None
     logging_started = False
     print("log1 start")
+
+    # 초기 설정하고 미션 수행
+    print("initial parameter set")
+    param_name = b"MC_ROLLRATE_MAX"
+    the_connection.mav.param_set_send(the_connection.target_system, the_connection.target_component, param_name, input_1, mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
+
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -252,6 +264,12 @@ def log_attitude_2(the_connection, output_file):
     msg = None
     logging_started = False
     print("log2 start")
+
+    # 초기 설정하고 미션 수행
+    print("initial parameter set")
+    param_name = b"MC_ROLLRATE_MAX"
+    the_connection.mav.param_set_send(the_connection.target_system, the_connection.target_component, param_name, input_2, mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
+
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -339,6 +357,12 @@ def log_attitude_3(the_connection, output_file):
     msg = None
     logging_started = False
     print("log3 start")
+
+    # 초기 설정하고 미션 수행
+    print("initial parameter set")
+    param_name = b"MC_ROLLRATE_MAX"
+    the_connection.mav.param_set_send(the_connection.target_system, the_connection.target_component, param_name, input_1, mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
+
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -426,6 +450,12 @@ def log_attitude_4(the_connection, output_file):
     msg = None
     logging_started = False
     print("log4 start")
+
+    # 초기 설정하고 미션 수행
+    print("initial parameter set")
+    param_name = b"MC_ROLLRATE_MAX"
+    the_connection.mav.param_set_send(the_connection.target_system, the_connection.target_component, param_name, input_2, mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
+
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -507,7 +537,8 @@ def log_attitude_4_target(the_connection, output_file):
             # 예외 처리
             print(f"Error: {e}")
 
-def case_sim(the_connection, mission_waypoints, file1, file2, i):
+# simulation to check input validation
+def case_sim_12(the_connection, mission_waypoints, file1, file2, i):
     
     upload_mission(the_connection, mission_waypoints)
     arm(the_connection)
@@ -537,36 +568,324 @@ def case_sim(the_connection, mission_waypoints, file1, file2, i):
     disarm(the_connection)
     time.sleep(10)
 
+# simulation to check vulnerabilities
+def case_sim_34(the_connection, mission_waypoints, file1, file2, i):
+    
+    upload_mission(the_connection, mission_waypoints)
+    arm(the_connection)
+    takeoff(the_connection)
+    start_mission(the_connection)
+    
+    # 별도의 스레드로 ATTITUDE 메시지 로깅 시작
+    log_function_name = f"log_attitude_{i}"
+    log_function_name_target = f"log_attitude_{i}_target"
+
+    log_thread = threading.Thread(target=globals()[log_function_name], args=(the_connection, file1))
+    log_thread_target = threading.Thread(target=globals()[log_function_name_target], args=(the_connection, file2))
+
+    if i == 3:
+        monitoring_input_thread = threading.Thread(target=input_update1_2, args=(the_connection,))
+    elif i == 4:
+        monitoring_input_thread = threading.Thread(target=input_update2_1, args=(the_connection,))
+    
+    log_thread.start()
+    log_thread_target.start()
+    monitoring_input_thread.start()
+    
+    # ATTITUDE 메시지 로깅 스레드 종료
+    log_thread.join()
+    log_thread_target.join()
+    monitoring_input_thread.join()
+
+    print("Logging completed.")
+    set_return(the_connection)
+    time.sleep(50)
+
+    #착륙
+    land(the_connection)
+    time.sleep(20)
+    disarm(the_connection)
+    time.sleep(10)
+
+
+
+# Input update 하는 함수
+def input_update1_2(the_connection):
+    print("input update start")
+    msg = None
+    logging_started = False
+    rollrate_current = 0
+    rollrate_target = 0
+
+    # ATTITUDE 메시지 구독
+    while True:
+        try:
+            # 메시지 수신 (로그 주기 설정에 따라 메시지가 더 자주 수신됨)
+            while msg is None:
+                msg = the_connection.recv_match()
+            
+            if logging_started:
+                if msg.get_type() == 'ATTITUDE_TARGET':
+                    # mission_item이 업데이트된 경우에만 로그 기록
+                    timestamp = msg.time_boot_ms
+                    rollrate_target = msg.body_roll_rate
+
+                if msg.get_type() == 'ATTITUDE_QUATERNION':
+                    timestamp = msg.time_boot_ms
+                    rollrate_current = msg.rollspeed
+
+                rollrate_error = rollrate_current - rollrate_target
+
+                if (rollrate_error >= 0.18 or rollrate_error <= -0.18):
+                    param_name = b"MC_ROLLRATE_MAX"
+                    the_connection.mav.param_set_send(the_connection.target_system, the_connection.target_component, param_name, input_2, mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
+                    print(rollrate_error, "parameter update 1 -> 2")
+
+            
+            if msg.get_type() == 'MISSION_ITEM_REACHED':
+                seq = msg.seq
+                print(seq)
+
+                if seq == 1:
+                    logging_started = True
+
+                if seq == (total_mission_items -1):
+                    break
+
+            msg = None
+
+        except KeyboardInterrupt:
+            # Ctrl+C로 프로그램 종료
+            break
+
+        except Exception as e:
+            # 예외 처리
+            print(f"Error: {e}")
+
+
+# Input update 하는 함수
+def input_update2_1(the_connection):
+    print("input update start")
+    msg = None
+    logging_started = False
+    rollrate_current = 0
+    rollrate_target = 0
+
+    # ATTITUDE 메시지 구독
+    while True:
+        try:
+            # 메시지 수신 (로그 주기 설정에 따라 메시지가 더 자주 수신됨)
+            while msg is None:
+                msg = the_connection.recv_match()
+            
+            if logging_started:
+                if msg.get_type() == 'ATTITUDE_TARGET':
+                    # mission_item이 업데이트된 경우에만 로그 기록
+                    timestamp = msg.time_boot_ms
+                    rollrate_target = msg.body_roll_rate
+
+                if msg.get_type() == 'ATTITUDE_QUATERNION':
+                    timestamp = msg.time_boot_ms
+                    rollrate_current = msg.rollspeed
+
+                rollrate_error = rollrate_current - rollrate_target
+
+                if (rollrate_error >= 0.18 or rollrate_error <= -0.18):
+                    param_name = b"MC_ROLLRATE_MAX"
+                    the_connection.mav.param_set_send(the_connection.target_system, the_connection.target_component, param_name, input_1, mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
+                    print(rollrate_error, "parameter update 2 -> 1")
+
+            
+            if msg.get_type() == 'MISSION_ITEM_REACHED':
+                seq = msg.seq
+                print(seq)
+
+                if seq == 1:
+                    logging_started = True
+
+                if seq == (total_mission_items -1):
+                    break
+
+            msg = None
+
+        except KeyboardInterrupt:
+            # Ctrl+C로 프로그램 종료
+            break
+
+        except Exception as e:
+            # 예외 처리
+            print(f"Error: {e}")
 
 #DTW is a cost function to compare the two log files.
-def dtw_compute(file1, file2):
-    df1 = pd.read_csv(file1)
-    df2 = pd.read_csv(file2)
+def dtw_compute():
 
-    roll_1 = df1.iloc[1:-1, 1]
-    roll_2 = df2.iloc[1:-1, 1]
+    vulnerable = False
 
-    pitch_1 = df1.iloc[1:-1, 2]
-    pitch_2 = df2.iloc[1:-1, 2]
+    # Load the desired and estimated attitude logs for the first case
+    desired1 = pd.read_csv(output_file_1_2)
+    estimated1 = pd.read_csv(output_file_1_1)
 
-    yaw_1 = df1.iloc[1:-1, 3]
-    yaw_2 = df2.iloc[1:-1, 3]
+    # Load the desired and estimated attitude logs for the second case
+    desired2 = pd.read_csv(output_file_2_2)
+    estimated2 = pd.read_csv(output_file_2_1)
 
-    roll_dtw = dtw.dtw(roll_1, roll_2, keep_internals=True).distance
-    pitch_dtw = dtw.dtw(pitch_1, pitch_2, keep_internals=True).distance
-    yaw_dtw = dtw.dtw(yaw_1, yaw_2, keep_internals=True).distance
+    # Load the desired and estimated attitude logs for the third case
+    desired3 = pd.read_csv(output_file_3_2)
+    estimated3 = pd.read_csv(output_file_3_1)
 
-    print("Roll DTW distance value: ", roll_dtw)
-    print("Pitch DTW distance value: ", pitch_dtw)
-    print("Yaw DTW distance value: ", yaw_dtw)
+    # Load the desired and estimated attitude logs for the third case
+    desired4 = pd.read_csv(output_file_4_2)
+    estimated4 = pd.read_csv(output_file_4_1)
 
+
+    # Extract the desired and estimated quaternion values for each case
+    q1_1d = desired1.iloc[1:-1, 1]
+    q2_1d = desired1.iloc[1:-1, 2]
+    q3_1d = desired1.iloc[1:-1, 3]
+    q4_1d = desired1.iloc[1:-1, 4]
+
+    q1_1 = estimated1.iloc[1:-1, 1]
+    q2_1 = estimated1.iloc[1:-1, 2]
+    q3_1 = estimated1.iloc[1:-1, 3]
+    q4_1 = estimated1.iloc[1:-1, 4]
+
+    # Extract the desired and estimated quaternion values for the second case
+    q1_2d = desired2.iloc[1:-1, 1]
+    q2_2d = desired2.iloc[1:-1, 2]
+    q3_2d = desired2.iloc[1:-1, 3]
+    q4_2d = desired2.iloc[1:-1, 4]
+
+    q1_2 = estimated2.iloc[1:-1, 1]
+    q2_2 = estimated2.iloc[1:-1, 2]
+    q3_2 = estimated2.iloc[1:-1, 3]
+    q4_2 = estimated2.iloc[1:-1, 4]
+
+    # Extract the desired and estimated quaternion values for the third case
+    q1_3d = desired3.iloc[1:-1, 1]
+    q2_3d = desired3.iloc[1:-1, 2]
+    q3_3d = desired3.iloc[1:-1, 3]
+    q4_3d = desired3.iloc[1:-1, 4]
+
+    q1_3 = estimated3.iloc[1:-1, 1]
+    q2_3 = estimated3.iloc[1:-1, 2]
+    q3_3 = estimated3.iloc[1:-1, 3]
+    q4_3 = estimated3.iloc[1:-1, 4]
+
+    # Extract the desired and estimated quaternion values for the third case
+    q1_4d = desired4.iloc[1:-1, 1]
+    q2_4d = desired4.iloc[1:-1, 2]
+    q3_4d = desired4.iloc[1:-1, 3]
+    q4_4d = desired4.iloc[1:-1, 4]
+
+    q1_4 = estimated4.iloc[1:-1, 1]
+    q2_4 = estimated4.iloc[1:-1, 2]
+    q3_4 = estimated4.iloc[1:-1, 3]
+    q4_4 = estimated4.iloc[1:-1, 4]
+
+    #q1에 대한 reference, estimated 비교
+    q1_dtw1_1 = dtw.dtw(q1_1d, q1_1, keep_internals=True).distance
+    q1_dtw1_2 = dtw.dtw(q1_2d, q1_2, keep_internals=True).distance
+    q1_dtw1_3 = dtw.dtw(q1_3d, q1_3, keep_internals=True).distance
+    q1_dtw1_4 = dtw.dtw(q1_4d, q1_4, keep_internals=True).distance
+
+    #q2에 대한 reference, estimated 비교
+    q2_dtw1_1 = dtw.dtw(q2_1d, q2_1, keep_internals=True).distance
+    q2_dtw1_2 = dtw.dtw(q2_2d, q2_2, keep_internals=True).distance
+    q2_dtw1_3 = dtw.dtw(q2_3d, q2_3, keep_internals=True).distance
+    q2_dtw1_4 = dtw.dtw(q2_4d, q2_4, keep_internals=True).distance
+
+    #q3에 대한 reference, estimated 비교
+    q3_dtw1_1 = dtw.dtw(q3_1d, q3_1, keep_internals=True).distance
+    q3_dtw1_2 = dtw.dtw(q3_2d, q3_2, keep_internals=True).distance
+    q3_dtw1_3 = dtw.dtw(q3_3d, q3_3, keep_internals=True).distance
+    q3_dtw1_4 = dtw.dtw(q3_4d, q3_4, keep_internals=True).distance
+
+    #q4에 대한 reference, estimated 비교
+    q4_dtw1_1 = dtw.dtw(q4_1d, q4_1, keep_internals=True).distance
+    q4_dtw1_2 = dtw.dtw(q4_2d, q4_2, keep_internals=True).distance
+    q4_dtw1_3 = dtw.dtw(q4_3d, q4_3, keep_internals=True).distance
+    q4_dtw1_4 = dtw.dtw(q4_4d, q4_4, keep_internals=True).distance
+
+
+    print("q1_1 DTW distance value to check validation: ", q1_dtw1_1)
+    print("q2_1 DTW distance value to check validation: ", q2_dtw1_1)
+    print("q3_1 DTW distance value to check validation: ", q3_dtw1_1)
+    print("q4_1 DTW distance value to check validation: ", q4_dtw1_1)
+    print("----------------------------")
+    print("q1_2 DTW distance value to check validation: ", q1_dtw1_2)
+    print("q2_2 DTW distance value to check validation: ", q2_dtw1_2)
+    print("q3_2 DTW distance value to check validation: ", q3_dtw1_2)
+    print("q4_2 DTW distance value to check validation: ", q4_dtw1_2)
+    print("----------------------------")
+    print("q1_3 DTW distance value to check validation: ", q1_dtw1_3)
+    print("q2_3 DTW distance value to check validation: ", q2_dtw1_3)
+    print("q3_3 DTW distance value to check validation: ", q3_dtw1_3)
+    print("q4_3 DTW distance value to check validation: ", q4_dtw1_3)
+    print("----------------------------")
+    print("q1_4 DTW distance value to check validation: ", q1_dtw1_4)
+    print("q2_4 DTW distance value to check validation: ", q2_dtw1_4)
+    print("q3_4 DTW distance value to check validation: ", q3_dtw1_4)
+    print("q4_4 DTW distance value to check validation: ", q4_dtw1_4)
+    print("----------------------------")
+
+    # 평가 후 input 변경
+    if (q1_dtw1_1 > 15) or (q2_dtw1_1 > 15) or (q3_dtw1_1 > 15) or (q4_dtw1_1 > 15):
+        print("case 1: invalid input was selected")
+        # input 1은 더이상 증가시키면 안됨
+        global input_1
+        input_1 -= 10
+        return 2
+
+    if (q1_dtw1_2 > 15) or (q2_dtw1_2 > 15) or (q3_dtw1_2 > 15) or (q4_dtw1_2 > 15):
+        print("case 2: invalid input was selected")
+        # input 2는 더이상 증가시키면 안됨
+        global input_2
+        input_2 += 10
+        return 3
+
+    if (q1_dtw1_3 > 15) or (q2_dtw1_3 > 15) or (q3_dtw1_3 > 15) or (q4_dtw1_3 > 15):
+        print("case 3: vulnerable case found!")
+        # input 1, 2 기록하고 케이스 넘버 또한 기록해야 함
+        input_1
+        input_2
+        with open(bug_report_file, 'a') as f:
+            f.write(f'{3},{input_1},{input_2}\n')
+        
+
+    if (q1_dtw1_4 > 15) or (q2_dtw1_4 > 15) or (q3_dtw1_4 > 15) or (q4_dtw1_4 > 15):
+        print("case 4: vulnerable case found!")
+        # input 1, 2 기록하고 케이스 넘버 또한 기록해야 함
+        input_1
+        input_2
+        with open(bug_report_file, 'a') as f:
+            f.write(f'{4},{input_1},{input_2}\n')
+        
+    return 1
+
+def input_mutation(case_num):
+    global input_1
+    global input_2
+
+    if case_num == 1:
+        random_num = random.choice([1, 2])
+        if random_num == 1:
+            input_1 += 10
+        else:
+            input_2 -= 10
+
+    elif case_num == 2:
+        input_2 -= 10
+    
+    elif case_num == 3:
+        input_1 += 10
+    
 
 #Main Function
 if __name__ == "__main__":
     print("--Program Started")
     the_connection = mavutil.mavlink_connection("udp:localhost:14540")
     #the_connection.mav.request_data_stream_send(the_connection.target_system, the_connection.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 10, 1)
-    #the_connection.mav.NAV_CONTROLLER_OUTPUT.subscribe(the_connection.target_system, the_connection.target_component)
+    #the_connection.mav.NAV_CONTROLLER_OUTPUT.subscribe(the_con악nection.target_system, the_connection.target_component)
 
 
     while(the_connection.target_system == 0):
@@ -582,14 +901,30 @@ if __name__ == "__main__":
     home_alt = 10  # 출발지점 고도
 
     mission_waypoints.append(mission_item(0, 0, home_lat, home_lon, home_alt)) #waypoint,0,Lattitude,longitutde,altitude
-    mission_waypoints.append(mission_item(1, 0, 35.706053, 128.457817, 10))
-    mission_waypoints.append(mission_item(2, 0, 35.706615, 128.456980, 5))
+    mission_waypoints.append(mission_item(1, 0, 35.706193, 128.457398, 10))
+    mission_waypoints.append(mission_item(2, 0, 35.706696, 128.456820, 5))
     
     total_mission_items = len(mission_waypoints)  # 미션 아이템의 총 개수
 
-    for i in range (1,5):
-        output_file1 = f"output_file_{i}_1"
-        output_file2 = f"output_file_{i}_2"
-        case_sim(the_connection, mission_waypoints, globals()[output_file1], globals()[output_file2], i)
+    while True:
+        # mission 수행
+        for i in range (1,3):
+            output_file1 = f"output_file_{i}_1"
+            output_file2 = f"output_file_{i}_2"
+            case_sim_12(the_connection, mission_waypoints, globals()[output_file1], globals()[output_file2], i)
+        
+        for i in range (3,5):
+            output_file1 = f"output_file_{i}_1"
+            output_file2 = f"output_file_{i}_2"
+            case_sim_34(the_connection, mission_waypoints, globals()[output_file1], globals()[output_file2], i)
+
+        # DTW 계산
+        sim_result = dtw_compute()
+
+        # vulnerable case 여부 파악
+        input_mutation(sim_result)
+
+        if (input_1 == 0 or input_2 == 1800):
+            break
 
     print("done!")
