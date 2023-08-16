@@ -56,8 +56,8 @@ total_mission_items = 0
 rollrate_target = 0
 rollrate_current = 0
 rollrate_error = 0
-input_1 = 210
-input_2 = 180
+input_1 = 230
+input_2 = 140
 
 #Class for formating the mission item
 class mission_item:
@@ -829,21 +829,23 @@ def dtw_compute():
     print("----------------------------")
 
     # 평가 후 input 변경
-    if (q1_dtw1_1 > 15) or (q2_dtw1_1 > 15) or (q3_dtw1_1 > 15) or (q4_dtw1_1 > 15):
+    if (q1_dtw1_1 > 20) or (q2_dtw1_1 > 20) or (q3_dtw1_1 > 20) or (q4_dtw1_1 > 20):
         print("case 1: invalid input was selected")
         # input 1은 더이상 증가시키면 안됨
         global input_1
         input_1 -= 10
+        del desired1, desired2, desired3, desired4, estimated1, estimated2, estimated3, estimated4
         return 2
 
-    if (q1_dtw1_2 > 15) or (q2_dtw1_2 > 15) or (q3_dtw1_2 > 15) or (q4_dtw1_2 > 15):
+    if (q1_dtw1_2 > 20) or (q2_dtw1_2 > 20) or (q3_dtw1_2 > 20) or (q4_dtw1_2 > 20):
         print("case 2: invalid input was selected")
         # input 2는 더이상 증가시키면 안됨
         global input_2
         input_2 += 10
+        del desired1, desired2, desired3, desired4, estimated1, estimated2, estimated3, estimated4
         return 3
 
-    if (q1_dtw1_3 > 15) or (q2_dtw1_3 > 15) or (q3_dtw1_3 > 15) or (q4_dtw1_3 > 15):
+    if (q1_dtw1_3 > 20) or (q2_dtw1_3 > 20) or (q3_dtw1_3 > 20) or (q4_dtw1_3 > 20):
         print("case 3: vulnerable case found!")
         # input 1, 2 기록하고 케이스 넘버 또한 기록해야 함
         input_1
@@ -852,14 +854,15 @@ def dtw_compute():
             f.write(f'{3},{input_1},{input_2}\n')
         
 
-    if (q1_dtw1_4 > 15) or (q2_dtw1_4 > 15) or (q3_dtw1_4 > 15) or (q4_dtw1_4 > 15):
+    if (q1_dtw1_4 > 20) or (q2_dtw1_4 > 20) or (q3_dtw1_4 > 20) or (q4_dtw1_4 > 20):
         print("case 4: vulnerable case found!")
         # input 1, 2 기록하고 케이스 넘버 또한 기록해야 함
         input_1
         input_2
         with open(bug_report_file, 'a') as f:
             f.write(f'{4},{input_1},{input_2}\n')
-        
+    
+    del desired1, desired2, desired3, desired4, estimated1, estimated2, estimated3, estimated4
     return 1
 
 def input_mutation(case_num):
