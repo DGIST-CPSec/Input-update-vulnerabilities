@@ -25,6 +25,7 @@ output_file_4_2 = 'attitude_log_4_desired.csv'
 bug_report_file = 'bug_report.csv'
 
 # 로그 파일 생성
+'''
 with open(output_file_1_1, 'w') as f:
     f.write('Timestamp,q1,q2,q3,q4\n')
 with open(output_file_1_2, 'w') as f:
@@ -41,6 +42,7 @@ with open(output_file_4_1, 'w') as f:
     f.write('Timestamp,q1,q2,q3,q4\n')
 with open(output_file_4_2, 'w') as f:
     f.write('Timestamp,q1_d,q2_d,q3_d,q4_d\n')
+    '''
 
 # 버그 리포트 파일 생성
 with open(bug_report_file, 'w') as f:
@@ -57,7 +59,7 @@ rollrate_target = 0
 rollrate_current = 0
 rollrate_error = 0
 input_1 = 230
-input_2 = 140
+input_2 = 80
 
 #Class for formating the mission item
 class mission_item:
@@ -83,7 +85,7 @@ def arm(the_connection):
     the_connection.mav.command_long_send(the_connection.target_system, the_connection.target_component,
                             mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 0, 1, 0,0,0,0,0,0)
 
-    ack(the_connection, "COMMAND_ACK")
+    ack_with_timeout(the_connection, "COMMAND_ACK")
 
 #Takeoff the Drone
 def takeoff(the_connection):
@@ -92,7 +94,7 @@ def takeoff(the_connection):
     the_connection.mav.command_long_send(the_connection.target_system, the_connection.target_component, 
                             mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, 0, 0, 0, 0, math.nan, 0, 0, 10)
 
-    ack(the_connection, "COMMAND_ACK")
+    ack_with_timeout(the_connection, "COMMAND_ACK")
 
 #Upload the mission items to the drone
 def upload_mission(the_connection, mission_items):
@@ -101,7 +103,7 @@ def upload_mission(the_connection, mission_items):
 
     the_connection.mav.mission_count_send(the_connection.target_system, the_connection.target_component, n, 0)
 
-    ack(the_connection, "MISSION_REQUEST")
+    ack_with_timeout(the_connection, "MISSION_REQUEST")
 
     for waypoint in mission_items:        #Mission Item created base on the Mavlink Message protocol
         print("--Creating a waypoint")
@@ -123,9 +125,9 @@ def upload_mission(the_connection, mission_items):
                                             waypoint.mission_type)
 
     if waypoint != mission_items[n-1]:
-        ack(the_connection, "MISSION_REQUEST")
+        ack_with_timeout(the_connection, "MISSION_REQUEST")
 
-    ack(the_connection, "MISSION_ACK")
+    ack_with_timeout(the_connection, "MISSION_ACK")
 
 
 #Send message for the drone to return to the launch point
@@ -134,7 +136,7 @@ def set_return(the_connection):
     the_connection.mav.command_long_send(the_connection.target_system, the_connection.target_component,
                             mavutil.mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH, 0, 0, 0, 0, 0, 0, 0, 0) #MAV_CMD_NAV_RETURN_TO_LAUNCH parameter has 7 values
 
-    ack(the_connection, "COMMAND_ACK")
+    ack_with_timeout(the_connection, "COMMAND_ACK")
 
 #Start mission
 def start_mission(the_connection):
@@ -142,27 +144,34 @@ def start_mission(the_connection):
     the_connection.mav.command_long_send(the_connection.target_system, the_connection.target_component,
                             mavutil.mavlink.MAV_CMD_MISSION_START, 0, 0, 0, 0, 0, 0, 0, 0) # Why 8 components?
 
-    ack(the_connection, "COMMAND_ACK")
+    ack_with_timeout(the_connection, "COMMAND_ACK")
 
 #Acknowledgement from the Drone
-def ack(the_connection, keyword):
-    print ("--Mesager Read " + str(the_connection.recv_match(type=keyword, blocking = True)))
+def ack_with_timeout(the_connection, keyword, timeout=10):
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        ack_msg = the_connection.recv_match(type=keyword)
+        if ack_msg:
+            print(f"--ACK received: {ack_msg}")
+            break
+        time.sleep(0.1)
+    else:
+        print(f"--ACK timeout for {keyword}")
+    #print ("--Mesager Read " + str(the_connection.recv_match(type=keyword, blocking = True)))
 
-def get_setpoint(the_connection):
-    print("--Getting ")
 
 def disarm(the_connection):
     print("--Disarming")
     the_connection.mav.command_long_send(the_connection.target_system, the_connection.target_component,
                             mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 0, 0, 0,0,0,0,0,0)
 
-    ack(the_connection, "COMMAND_ACK")
+    ack_with_timeout(the_connection, "COMMAND_ACK")
 
 def land(the_connection):
     print("--Landing")
     the_connection.mav.command_long_send(the_connection.target_system, the_connection.target_component,
                                          mavutil.mavlink.MAV_CMD_NAV_LAND, 0, 0, 0, 0, math.nan, 0, 0, 0)
-    ack(the_connection, "COMMAND_ACK")
+    ack_with_timeout(the_connection, "COMMAND_ACK")
 
 
 #Attitude log record
@@ -170,6 +179,8 @@ def log_attitude_1(the_connection, output_file):
     msg = None
     logging_started = False
     print("log1 start")
+    with open(output_file_1_1, 'w') as f:
+        f.write('Timestamp,q1,q2,q3,q4\n')
 
     # 초기 설정하고 미션 수행
     print("initial parameter set")
@@ -219,6 +230,9 @@ def log_attitude_1_target(the_connection, output_file):
     msg = None
     logging_started = False
     print("log1 start")
+    with open(output_file_1_2, 'w') as f:
+        f.write('Timestamp,q1_d,q2_d,q3_d,q4_d\n')
+
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -264,6 +278,8 @@ def log_attitude_2(the_connection, output_file):
     msg = None
     logging_started = False
     print("log2 start")
+    with open(output_file_2_1, 'w') as f:
+        f.write('Timestamp,q1,q2,q3,q4\n')
 
     # 초기 설정하고 미션 수행
     print("initial parameter set")
@@ -314,6 +330,9 @@ def log_attitude_2_target(the_connection, output_file):
     msg = None
     logging_started = False
     print("log2 start")
+    with open(output_file_2_2, 'w') as f:
+        f.write('Timestamp,q1_d,q2_d,q3_d,q4_d\n')
+
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -357,6 +376,8 @@ def log_attitude_3(the_connection, output_file):
     msg = None
     logging_started = False
     print("log3 start")
+    with open(output_file_3_1, 'w') as f:
+        f.write('Timestamp,q1,q2,q3,q4\n')
 
     # 초기 설정하고 미션 수행
     print("initial parameter set")
@@ -407,6 +428,9 @@ def log_attitude_3_target(the_connection, output_file):
     msg = None
     logging_started = False
     print("log3 start")
+    with open(output_file_3_2, 'w') as f:
+        f.write('Timestamp,q1_d,q2_d,q3_d,q4_d\n')
+
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -450,6 +474,9 @@ def log_attitude_4(the_connection, output_file):
     msg = None
     logging_started = False
     print("log4 start")
+    with open(output_file_4_1, 'w') as f:
+        f.write('Timestamp,q1,q2,q3,q4\n')
+
 
     # 초기 설정하고 미션 수행
     print("initial parameter set")
@@ -499,6 +526,9 @@ def log_attitude_4_target(the_connection, output_file):
     msg = None
     logging_started = False
     print("log4 start")
+    with open(output_file_4_2, 'w') as f:
+        f.write('Timestamp,q1_d,q2_d,q3_d,q4_d\n')
+
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -739,48 +769,48 @@ def dtw_compute():
 
 
     # Extract the desired and estimated quaternion values for each case
-    q1_1d = desired1.iloc[1:-1, 1]
-    q2_1d = desired1.iloc[1:-1, 2]
-    q3_1d = desired1.iloc[1:-1, 3]
-    q4_1d = desired1.iloc[1:-1, 4]
+    q1_1d = desired1.iloc[1:-1, 1].astype(float)
+    q2_1d = desired1.iloc[1:-1, 2].astype(float)
+    q3_1d = desired1.iloc[1:-1, 3].astype(float)
+    q4_1d = desired1.iloc[1:-1, 4].astype(float)
 
-    q1_1 = estimated1.iloc[1:-1, 1]
-    q2_1 = estimated1.iloc[1:-1, 2]
-    q3_1 = estimated1.iloc[1:-1, 3]
-    q4_1 = estimated1.iloc[1:-1, 4]
+    q1_1 = estimated1.iloc[1:-1, 1].astype(float)
+    q2_1 = estimated1.iloc[1:-1, 2].astype(float)
+    q3_1 = estimated1.iloc[1:-1, 3].astype(float)
+    q4_1 = estimated1.iloc[1:-1, 4].astype(float)
 
     # Extract the desired and estimated quaternion values for the second case
-    q1_2d = desired2.iloc[1:-1, 1]
-    q2_2d = desired2.iloc[1:-1, 2]
-    q3_2d = desired2.iloc[1:-1, 3]
-    q4_2d = desired2.iloc[1:-1, 4]
+    q1_2d = desired2.iloc[1:-1, 1].astype(float)
+    q2_2d = desired2.iloc[1:-1, 2].astype(float)
+    q3_2d = desired2.iloc[1:-1, 3].astype(float)
+    q4_2d = desired2.iloc[1:-1, 4].astype(float)
 
-    q1_2 = estimated2.iloc[1:-1, 1]
-    q2_2 = estimated2.iloc[1:-1, 2]
-    q3_2 = estimated2.iloc[1:-1, 3]
-    q4_2 = estimated2.iloc[1:-1, 4]
-
-    # Extract the desired and estimated quaternion values for the third case
-    q1_3d = desired3.iloc[1:-1, 1]
-    q2_3d = desired3.iloc[1:-1, 2]
-    q3_3d = desired3.iloc[1:-1, 3]
-    q4_3d = desired3.iloc[1:-1, 4]
-
-    q1_3 = estimated3.iloc[1:-1, 1]
-    q2_3 = estimated3.iloc[1:-1, 2]
-    q3_3 = estimated3.iloc[1:-1, 3]
-    q4_3 = estimated3.iloc[1:-1, 4]
+    q1_2 = estimated2.iloc[1:-1, 1].astype(float)
+    q2_2 = estimated2.iloc[1:-1, 2].astype(float)
+    q3_2 = estimated2.iloc[1:-1, 3].astype(float)
+    q4_2 = estimated2.iloc[1:-1, 4].astype(float)
 
     # Extract the desired and estimated quaternion values for the third case
-    q1_4d = desired4.iloc[1:-1, 1]
-    q2_4d = desired4.iloc[1:-1, 2]
-    q3_4d = desired4.iloc[1:-1, 3]
-    q4_4d = desired4.iloc[1:-1, 4]
+    q1_3d = desired3.iloc[1:-1, 1].astype(float)
+    q2_3d = desired3.iloc[1:-1, 2].astype(float)
+    q3_3d = desired3.iloc[1:-1, 3].astype(float)
+    q4_3d = desired3.iloc[1:-1, 4].astype(float)
 
-    q1_4 = estimated4.iloc[1:-1, 1]
-    q2_4 = estimated4.iloc[1:-1, 2]
-    q3_4 = estimated4.iloc[1:-1, 3]
-    q4_4 = estimated4.iloc[1:-1, 4]
+    q1_3 = estimated3.iloc[1:-1, 1].astype(float)
+    q2_3 = estimated3.iloc[1:-1, 2].astype(float)
+    q3_3 = estimated3.iloc[1:-1, 3].astype(float)
+    q4_3 = estimated3.iloc[1:-1, 4].astype(float)
+
+    # Extract the desired and estimated quaternion values for the third case
+    q1_4d = desired4.iloc[1:-1, 1].astype(float)
+    q2_4d = desired4.iloc[1:-1, 2].astype(float)
+    q3_4d = desired4.iloc[1:-1, 3].astype(float)
+    q4_4d = desired4.iloc[1:-1, 4].astype(float)
+
+    q1_4 = estimated4.iloc[1:-1, 1].astype(float)
+    q2_4 = estimated4.iloc[1:-1, 2].astype(float)
+    q3_4 = estimated4.iloc[1:-1, 3].astype(float)
+    q4_4 = estimated4.iloc[1:-1, 4].astype(float)
 
     #q1에 대한 reference, estimated 비교
     q1_dtw1_1 = dtw.dtw(q1_1d, q1_1, keep_internals=True).distance
@@ -829,7 +859,7 @@ def dtw_compute():
     print("----------------------------")
 
     # 평가 후 input 변경
-    if (q1_dtw1_1 > 20) or (q2_dtw1_1 > 20) or (q3_dtw1_1 > 20) or (q4_dtw1_1 > 20):
+    if (q1_dtw1_1 > 15) or (q2_dtw1_1 > 15) or (q3_dtw1_1 > 15) or (q4_dtw1_1 > 15):
         print("case 1: invalid input was selected")
         # input 1은 더이상 증가시키면 안됨
         global input_1
@@ -837,7 +867,7 @@ def dtw_compute():
         del desired1, desired2, desired3, desired4, estimated1, estimated2, estimated3, estimated4
         return 2
 
-    if (q1_dtw1_2 > 20) or (q2_dtw1_2 > 20) or (q3_dtw1_2 > 20) or (q4_dtw1_2 > 20):
+    if (q1_dtw1_2 > 15) or (q2_dtw1_2 > 15) or (q3_dtw1_2 > 15) or (q4_dtw1_2 > 15):
         print("case 2: invalid input was selected")
         # input 2는 더이상 증가시키면 안됨
         global input_2
@@ -845,7 +875,7 @@ def dtw_compute():
         del desired1, desired2, desired3, desired4, estimated1, estimated2, estimated3, estimated4
         return 3
 
-    if (q1_dtw1_3 > 20) or (q2_dtw1_3 > 20) or (q3_dtw1_3 > 20) or (q4_dtw1_3 > 20):
+    if (q1_dtw1_3 > 15) or (q2_dtw1_3 > 15) or (q3_dtw1_3 > 15) or (q4_dtw1_3 > 15):
         print("case 3: vulnerable case found!")
         # input 1, 2 기록하고 케이스 넘버 또한 기록해야 함
         input_1
@@ -854,7 +884,7 @@ def dtw_compute():
             f.write(f'{3},{input_1},{input_2}\n')
         
 
-    if (q1_dtw1_4 > 20) or (q2_dtw1_4 > 20) or (q3_dtw1_4 > 20) or (q4_dtw1_4 > 20):
+    if (q1_dtw1_4 > 15) or (q2_dtw1_4 > 15) or (q3_dtw1_4 > 15) or (q4_dtw1_4 > 15):
         print("case 4: vulnerable case found!")
         # input 1, 2 기록하고 케이스 넘버 또한 기록해야 함
         input_1
@@ -927,7 +957,7 @@ if __name__ == "__main__":
         # vulnerable case 여부 파악
         input_mutation(sim_result)
 
-        if (input_1 == 0 or input_2 == 1800):
+        if (input_1 == 1800 or input_2 == 0):
             break
 
     print("done!")
