@@ -666,7 +666,7 @@ def input_update1_2(the_connection):
 
                 rollrate_error = rollrate_current - rollrate_target
 
-                if (rollrate_error >= 0.18 or rollrate_error <= -0.18):
+                if (rollrate_error >= 0.22 or rollrate_error <= -0.22):
                     param_name = b"MC_ROLLRATE_MAX"
                     the_connection.mav.param_set_send(the_connection.target_system, the_connection.target_component, param_name, input_2, mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
                     print(rollrate_error, "parameter update 1 -> 2")
@@ -720,7 +720,7 @@ def input_update2_1(the_connection):
 
                 rollrate_error = rollrate_current - rollrate_target
 
-                if (rollrate_error >= 0.18 or rollrate_error <= -0.18):
+                if (rollrate_error >= 0.22 or rollrate_error <= -0.22):
                     param_name = b"MC_ROLLRATE_MAX"
                     the_connection.mav.param_set_send(the_connection.target_system, the_connection.target_component, param_name, input_1, mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
                     print(rollrate_error, "parameter update 2 -> 1")
