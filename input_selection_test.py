@@ -1,4 +1,5 @@
 import csv
+import sys
 import time
 import math
 from pymavlink import mavutil
@@ -7,6 +8,8 @@ import numpy as np
 import dtw
 import pandas as pd
 import random
+import os
+import subprocess
 
 
 # 출력 파일명 설정
@@ -61,13 +64,18 @@ rollrate_current = 0
 rollrate_error = 0
 range_max = 1800
 range_min = 0
-mid_value = (range_max + range_min)/2
+mid_value = random.randint(0,1800)
 parameter_incremental = 5
 
-input_max = range_max
-input_min = 450
+input_max = 2
+#input_max = (mid_value + range_max)/2
+input_min = 1
+#input_min = (mid_value + range_min)/2
 prev_input_max = input_max
 prev_input_min = input_min
+
+drone_status = 0
+system_reboot = 0
 
 #Class for formating the mission item
 class mission_item:
@@ -189,7 +197,8 @@ def log_attitude_1(the_connection, output_file):
     print("log1 start")
     with open(output_file_1_1, 'w') as f:
         f.write('Timestamp,q1,q2,q3,q4\n')
-
+    global drone_status
+    global system_reboot
     # 초기 설정하고 미션 수행
     print("initial parameter set")
     param_name = b"MC_ROLLRATE_MAX"
@@ -222,6 +231,16 @@ def log_attitude_1(the_connection, output_file):
 
                 if seq == (total_mission_items -1):
                     break
+            
+            if msg.get_type() == 'HEARTBEAT':
+                drone_status = msg.system_status
+                if drone_status == (5 or 6):
+                    print("Drone is unsafe!")
+                    input_mutation(5)
+                    re_launch()
+                    reboot()
+                    system_reboot = 1
+                    break
 
             msg = None
 
@@ -241,6 +260,7 @@ def log_attitude_1_target(the_connection, output_file):
     with open(output_file_1_2, 'w') as f:
         f.write('Timestamp,q1_d,q2_d,q3_d,q4_d\n')
 
+    global system_reboot
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -268,6 +288,9 @@ def log_attitude_1_target(the_connection, output_file):
 
                 if seq == (total_mission_items -1):
                     break
+            
+            if system_reboot == 1:
+                break 
 
             msg = None
 
@@ -288,7 +311,8 @@ def log_attitude_2(the_connection, output_file):
     print("log2 start")
     with open(output_file_2_1, 'w') as f:
         f.write('Timestamp,q1,q2,q3,q4\n')
-
+    global drone_status
+    global system_reboot
     # 초기 설정하고 미션 수행
     print("initial parameter set")
     param_name = b"MC_ROLLRATE_MAX"
@@ -320,6 +344,16 @@ def log_attitude_2(the_connection, output_file):
                     logging_started = True
 
                 if seq == (total_mission_items -1):
+                    break
+
+            if msg.get_type() == 'HEARTBEAT':
+                drone_status = msg.system_status
+                if drone_status == (5 or 6):
+                    print("Drone is unsafe!")
+                    input_mutation(6)
+                    re_launch()
+                    reboot()
+                    system_reboot = 1
                     break
 
             msg = None
@@ -341,6 +375,7 @@ def log_attitude_2_target(the_connection, output_file):
     with open(output_file_2_2, 'w') as f:
         f.write('Timestamp,q1_d,q2_d,q3_d,q4_d\n')
 
+    global system_reboot
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -369,6 +404,9 @@ def log_attitude_2_target(the_connection, output_file):
                 if seq == (total_mission_items -1):
                     break
 
+            if system_reboot == 1:
+                break 
+
             msg = None
 
         except KeyboardInterrupt:
@@ -387,6 +425,8 @@ def log_attitude_3(the_connection, output_file):
     with open(output_file_3_1, 'w') as f:
         f.write('Timestamp,q1,q2,q3,q4\n')
 
+    global drone_status
+    global system_reboot
     # 초기 설정하고 미션 수행
     print("initial parameter set")
     param_name = b"MC_ROLLRATE_MAX"
@@ -420,6 +460,19 @@ def log_attitude_3(the_connection, output_file):
                 if seq == (total_mission_items -1):
                     break
 
+
+            if msg.get_type() == 'HEARTBEAT':
+                sys_status = msg.system_status
+                if sys_status == (5 or 6):
+                    print("Drone is unsafe!")
+                    input_mutation(1)
+                    with open(bug_report_file, 'a') as f:
+                        f.write(f'{3},{input_max},{input_min}\n')
+                    re_launch()
+                    reboot()
+                    system_reboot = 1
+                    break
+
             msg = None
 
         except KeyboardInterrupt:
@@ -439,6 +492,7 @@ def log_attitude_3_target(the_connection, output_file):
     with open(output_file_3_2, 'w') as f:
         f.write('Timestamp,q1_d,q2_d,q3_d,q4_d\n')
 
+    global system_reboot
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -467,6 +521,9 @@ def log_attitude_3_target(the_connection, output_file):
                 if seq == (total_mission_items -1):
                     break
 
+            if system_reboot == 1:
+                break 
+
             msg = None
 
         except KeyboardInterrupt:
@@ -485,7 +542,8 @@ def log_attitude_4(the_connection, output_file):
     with open(output_file_4_1, 'w') as f:
         f.write('Timestamp,q1,q2,q3,q4\n')
 
-
+    global drone_status
+    global system_reboot
     # 초기 설정하고 미션 수행
     print("initial parameter set")
     param_name = b"MC_ROLLRATE_MAX"
@@ -519,6 +577,18 @@ def log_attitude_4(the_connection, output_file):
                 if seq == (total_mission_items -1):
                     break
 
+            if msg.get_type() == 'HEARTBEAT':
+                sys_status = msg.system_status
+                if sys_status == (5 or 6):
+                    print("Drone is unsafe!")
+                    input_mutation(1)
+                    with open(bug_report_file, 'a') as f:
+                        f.write(f'{4},{input_max},{input_min}\n')
+                    re_launch()
+                    reboot()
+                    system_reboot = 1
+                    break
+
             msg = None
 
         except KeyboardInterrupt:
@@ -537,6 +607,7 @@ def log_attitude_4_target(the_connection, output_file):
     with open(output_file_4_2, 'w') as f:
         f.write('Timestamp,q1_d,q2_d,q3_d,q4_d\n')
 
+    global system_reboot
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -564,6 +635,9 @@ def log_attitude_4_target(the_connection, output_file):
 
                 if seq == (total_mission_items -1):
                     break
+
+            if system_reboot == 1:
+                break 
 
             msg = None
 
@@ -917,6 +991,11 @@ def input_mutation(case_num):
         else:
             if input_min != range_min:
                 input_min = (input_min + range_min)/2
+    
+    elif case_num == 5:
+        input_max = (mid_value + input_max)/2
+    elif case_num == 6:
+        input_min = (mid_value + input_min)/2
     """
     elif case_num == 2:
         input_min = (input_min + mid_value)/2
@@ -939,56 +1018,144 @@ def bug_report_check(bug_file):
 
     return True
 
+def re_launch():
+    global home_position
+    print("----------------------------------------------------------")
+    print("--------------------Relaunch the Drone--------------------")
+    print("----------------------------------------------------------")
+    #sys.exit()
+
+#def msg_handler(msg):
+
+def reboot():
+    global system_reboot
+    
+    print("----------------------------------------------------------")
+    print("--------------------Reboot the system---------------------")
+    print("----------------------------------------------------------")
+    directory_path = '/home/cps/PX4-Autopilot'
+    os.chdir(directory_path)
+
+    subprocess.run(["sudo", "pkill", "px4"])
+    """
+    # PX4와 관련된 프로세스 ID 찾기
+    px4_process = "PX4"  # PX4와 관련된 프로세스의 이름
+    try:
+        px4_pid = subprocess.check_output(["pgrep", px4_process]).decode("utf-8").strip()
+    except subprocess.CalledProcessError:
+        px4_pid = None
+
+    # PX4 프로세스가 실행 중이라면 종료
+    if px4_pid:
+        subprocess.run(["kill", px4_pid])
+    """
+    """
+    command1 = 'export PX4_HOME_LAT=35.706537'
+    command2 = 'export PX4_HOME_LON=128.455759'
+    command3 = 'make px4_sitl gazebo'
+
+    subprocess.run(command1, shell=True, check=True)
+    subprocess.run(command2, shell=True, check=True)
+    subprocess.run(command3, shell=True, check=True)
+    """
+
+    # 실행할 명령어 문자열 생성
+    commands = [
+        'export PX4_HOME_LAT=35.706537',
+        'export PX4_HOME_LON=128.455759',
+        'make px4_sitl gazebo'
+    ]
+
+    # 명령어 문자열을 세미콜론으로 연결
+    full_command = ';'.join(commands)
+
+    # 지정된 디렉토리로 이동 후 명령 실행
+    #os.system(f'cd {directory_path} && {full_command}')
+    subprocess.Popen(['gnome-terminal', '--', 'bash', '-c', f'cd {directory_path} && {full_command}'])
+
+    #subprocess.run(["export", "PX4_HOME_LAT=35.706537"], shell=True, check=True)
+    #subprocess.run(["export", "PX4_HOME_LON=128.455759"], shell=True, check=True)
+    #subprocess.run(["make", "px4_sitl", "gazebo"], shell=True, check=True)
+    print("----------------------------------------------------------")
+    print("-------------------------Restart--------------------------")
+    print("----------------------------------------------------------")
+    system_reboot = 0
+
 #Main Function
 if __name__ == "__main__":
-    print("--Program Started")
-    the_connection = mavutil.mavlink_connection("udp:localhost:14540")
-    #the_connection.mav.request_data_stream_send(the_connection.target_system, the_connection.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 10, 1)
-    #the_connection.mav.NAV_CONTROLLER_OUTPUT.subscribe(the_con악nection.target_system, the_connection.target_component)
+    while True:
+        #reboot()
+        drone_status = 0
+        print("--Program Started")
+        the_connection = mavutil.mavlink_connection("udp:localhost:14540")
+        #the_connection.mav.request_data_stream_send(the_connection.target_system, the_connection.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 10, 1)
+        #the_connection.mav.NAV_CONTROLLER_OUTPUT.subscribe(the_con악nection.target_system, the_connection.target_component)
 
 
-    while(the_connection.target_system == 0):
-        print("--Checking Heartbeat")
-        the_connection.wait_heartbeat() #wait_heartbeat() Finding problem...
-        print("--heartbeat from system (system %u component %u)" % (the_connection.target_system, the_connection.target_component))
+        while(the_connection.target_system == 0):
+            print("--Checking Heartbeat")
+            the_connection.wait_heartbeat() #wait_heartbeat() Finding problem...
+            print("--heartbeat from system (system %u component %u)" % (the_connection.target_system, the_connection.target_component))
 
-    mission_waypoints = []
+        mission_waypoints = []
+        #mission_waypoints = [(35.706537, 128.455759, 10),
+        #                    (35.706193, 128.457398, 10),
+        #                    (35.706696, 128.456280, 5)]
 
-    # Home position 설정
-    home_lat = 35.706537  # 출발지점 위도
-    home_lon = 128.455759  # 출발지점 경도
-    home_alt = 10  # 출발지점 고도
-
-    mission_waypoints.append(mission_item(0, 0, home_lat, home_lon, home_alt)) #waypoint,0,Lattitude,longitutde,altitude
-    mission_waypoints.append(mission_item(1, 0, 35.706193, 128.457398, 10))
-    mission_waypoints.append(mission_item(2, 0, 35.706696, 128.456820, 5))
-    
-    total_mission_items = len(mission_waypoints)  # 미션 아이템의 총 개수
-
-    flag = bug_report_check(bug_report_file)
-
-    while flag:
-
-        # mission 수행
-        for i in range (1,3):
-            output_file1 = f"output_file_{i}_1"
-            output_file2 = f"output_file_{i}_2"
-            case_sim_12(the_connection, mission_waypoints, globals()[output_file1], globals()[output_file2], i)
+        # Home position 설정
+        #home_position = mission_waypoints[0]
+        home_lat = 35.706537
+        home_lon = 128.455759
+        home_alt = 10
         
-        for i in range (3,5):
-            output_file1 = f"output_file_{i}_1"
-            output_file2 = f"output_file_{i}_2"
-            case_sim_34(the_connection, mission_waypoints, globals()[output_file1], globals()[output_file2], i)
-
-        # DTW 계산
-        sim_result = dtw_compute()
-
-        # vulnerable case 여부 파악
-        input_mutation(sim_result)
+        mission_waypoints.append(mission_item(0, 0, home_lat, home_lon, home_alt)) #waypoint,0,Lattitude,longitutde,altitude
+        mission_waypoints.append(mission_item(1, 0, 35.706193, 128.457398, 10))
+        mission_waypoints.append(mission_item(2, 0, 35.706696, 128.456820, 5))
+        
+        
+        total_mission_items = len(mission_waypoints)  # 미션 아이템의 총 개수
 
         flag = bug_report_check(bug_report_file)
 
-        #if (input_max == 1800 or input_min == 0):
-            #break
+        count_loop = 0
 
-    print("done!")
+        while flag:
+
+            count_loop += 1
+            print(count_loop, " times loop executed")
+
+            # mission 수행
+            for i in range (1,3):
+                output_file1 = f"output_file_{i}_1"
+                output_file2 = f"output_file_{i}_2"
+                case_sim_12(the_connection, mission_waypoints, globals()[output_file1], globals()[output_file2], i)
+            
+            for i in range (3,5):
+                output_file1 = f"output_file_{i}_1"
+                output_file2 = f"output_file_{i}_2"
+                case_sim_34(the_connection, mission_waypoints, globals()[output_file1], globals()[output_file2], i)
+
+            if drone_status == 6:
+                re_launch()
+                reboot()
+                break
+
+            # DTW 계산
+            sim_result = dtw_compute()
+
+            # vulnerable case 여부 파악
+            input_mutation(sim_result)
+
+            flag = bug_report_check(bug_report_file)
+
+            #if (input_max == 1800 or input_min == 0):
+                #break
+
+        if flag == False:
+            print("Same bug reported!")
+            print("done!")
+
+        if count_loop > 500:
+            print("count_loop: ", count_loop)
+            print("done!")
+            break
