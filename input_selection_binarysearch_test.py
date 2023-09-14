@@ -79,6 +79,8 @@ system_reboot = 0
 crash_failsafe = 0
 battery_healthy = 0
 running_time_over = 0
+logging_started = False
+battery_check = 0
 
 #Class for formating the mission item
 class mission_item:
@@ -195,22 +197,27 @@ def land(the_connection):
 
 #Attitude log record
 def log_attitude_1(the_connection, output_file):
-    msg = None
-    logging_started = False
-    print("log1 start")
-    with open(output_file_1_1, 'w') as f:
-        f.write('Timestamp,q1,q2,q3,q4\n')
     global drone_status
     global system_reboot
     global crash_failsafe
     global battery_healthy
     global running_time_over
+    global logging_started
+
+    msg = None
+    #logging_started = False
+    print("log1 start")
+    with open(output_file_1_1, 'w') as f:
+        f.write('Timestamp,q1,q2,q3,q4\n')
+
     # 초기 설정하고 미션 수행
     print("initial parameter set")
     param_name = b"MC_ROLLRATE_MAX"
     the_connection.mav.param_set_send(the_connection.target_system, the_connection.target_component, param_name, input_max, mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
 
     start_time = time.time()
+    heartbeat_check_time = time.time()
+    battery_status_time = time.time()
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -219,10 +226,12 @@ def log_attitude_1(the_connection, output_file):
                 msg = the_connection.recv_match()
             
             current_time = time.time()
-            run_time = start_time - current_time
-            if run_time > 300:
+            run_time = current_time - start_time
+            if run_time > 360:
                 print("Run time over 5 minutes!")
                 running_time_over = 1
+                re_launch()
+                reboot()
                 input_mutation(5)
                 break
 
@@ -245,12 +254,18 @@ def log_attitude_1(the_connection, output_file):
                     logging_started = True
 
                 if seq == (total_mission_items -1):
+                    logging_started = False
                     break
             
+            heartbeat_check_1 = time.time()
+
             if msg.get_type() == 'HEARTBEAT':
                 drone_status = msg.system_status
                 drone_mode_flag = msg.base_mode
-                if drone_status == (5 or 6):
+
+                heartbeat_check_time = time.time()
+
+                if drone_status == (6):
                     print("Drone is unsafe!")
                     input_mutation(5)
                     re_launch()
@@ -264,6 +279,27 @@ def log_attitude_1(the_connection, output_file):
                     re_launch()
                     reboot()
                     battery_healthy = 1
+                    break
+
+            if msg.get_type() == "BATTERY_STATUS":
+                battery_mode = msg.mode
+                battery_fail = msg.fault_bitmask
+
+                battery_status_time = time.time()
+
+            if abs(heartbeat_check_1 - battery_status_time) > 60:
+                print("------Battery Unhealthy!------")
+                re_launch()
+                reboot()
+                battery_healthy = 1
+                break
+            
+            if heartbeat_check_1 - heartbeat_check_time > 20:
+                print("Drone heartbeat lost!")
+                re_launch()
+                reboot()
+                battery_healthy = 1
+                break
 
             msg = None
 
@@ -277,15 +313,16 @@ def log_attitude_1(the_connection, output_file):
 
 #Attitude log record
 def log_attitude_1_target(the_connection, output_file):
+    global system_reboot
+    global battery_healthy
+    global running_time_over
+    global logging_started
+    
     msg = None
-    logging_started = False
     print("log1 start")
     with open(output_file_1_2, 'w') as f:
         f.write('Timestamp,q1_d,q2_d,q3_d,q4_d\n')
 
-    global system_reboot
-    global battery_healthy
-    global running_time_over
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -312,6 +349,7 @@ def log_attitude_1_target(the_connection, output_file):
                     logging_started = True
 
                 if seq == (total_mission_items -1):
+                    logging_started = False
                     break
             
             if system_reboot == 1:
@@ -337,22 +375,26 @@ def log_attitude_1_target(the_connection, output_file):
 
 #Attitude log record
 def log_attitude_2(the_connection, output_file):
-    msg = None
-    logging_started = False
-    print("log2 start")
-    with open(output_file_2_1, 'w') as f:
-        f.write('Timestamp,q1,q2,q3,q4\n')
     global drone_status
     global system_reboot
     global crash_failsafe
     global battery_healthy
     global running_time_over
+    global logging_started
+    
+    msg = None
+    print("log2 start")
+    with open(output_file_2_1, 'w') as f:
+        f.write('Timestamp,q1,q2,q3,q4\n')
+    
     # 초기 설정하고 미션 수행
     print("initial parameter set")
     param_name = b"MC_ROLLRATE_MAX"
     the_connection.mav.param_set_send(the_connection.target_system, the_connection.target_component, param_name, input_min, mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
 
     start_time = time.time()
+    heartbeat_check_time = time.time()
+    battery_status_time = time.time()
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -361,10 +403,12 @@ def log_attitude_2(the_connection, output_file):
                 msg = the_connection.recv_match()
             
             current_time = time.time()
-            run_time = start_time - current_time
-            if run_time > 300:
+            run_time = current_time - start_time
+            if run_time > 360:
                 print("Run time over 5 minutes!")
                 running_time_over = 1
+                re_launch()
+                reboot()
                 input_mutation(6)
                 break
 
@@ -387,12 +431,18 @@ def log_attitude_2(the_connection, output_file):
                     logging_started = True
 
                 if seq == (total_mission_items -1):
+                    logging_started = False
                     break
+
+            heartbeat_check_1 = time.time()
 
             if msg.get_type() == 'HEARTBEAT':
                 drone_status = msg.system_status
                 drone_mode_flag = msg.base_mode
-                if drone_status == (5 or 6):
+
+                heartbeat_check_time = time.time()
+
+                if drone_status == (6):
                     print("Drone is unsafe!")
                     input_mutation(6)
                     re_launch()
@@ -406,6 +456,27 @@ def log_attitude_2(the_connection, output_file):
                     re_launch()
                     reboot()
                     battery_healthy = 1
+                    break
+
+            if msg.get_type() == "BATTERY_STATUS":
+                battery_mode = msg.mode
+                battery_fail = msg.fault_bitmask
+
+                battery_status_time = time.time()
+
+            if abs(heartbeat_check_1 - battery_status_time) > 60:
+                print("------Battery Unhealthy!------")
+                re_launch()
+                reboot()
+                battery_healthy = 1
+                break
+
+            if heartbeat_check_1 - heartbeat_check_time > 20:
+                print("Drone heartbeat lost!")
+                re_launch()
+                reboot()
+                battery_healthy = 1
+                break
 
             msg = None
 
@@ -420,15 +491,17 @@ def log_attitude_2(the_connection, output_file):
 
 #Attitude log record
 def log_attitude_2_target(the_connection, output_file):
+    global system_reboot
+    global battery_healthy
+    global running_time_over
+    global logging_started
+    
     msg = None
-    logging_started = False
     print("log2 start")
     with open(output_file_2_2, 'w') as f:
         f.write('Timestamp,q1_d,q2_d,q3_d,q4_d\n')
 
-    global system_reboot
-    global battery_healthy
-    global running_time_over
+    
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -455,6 +528,7 @@ def log_attitude_2_target(the_connection, output_file):
                     logging_started = True
 
                 if seq == (total_mission_items -1):
+                    logging_started = False
                     break
 
             if system_reboot == 1:
@@ -478,23 +552,26 @@ def log_attitude_2_target(the_connection, output_file):
 
 #Attitude log record
 def log_attitude_3(the_connection, output_file):
-    msg = None
-    logging_started = False
-    print("log3 start")
-    with open(output_file_3_1, 'w') as f:
-        f.write('Timestamp,q1,q2,q3,q4\n')
-
     global drone_status
     global system_reboot
     global crash_failsafe
     global battery_healthy
     global running_time_over
+    global logging_started
+    
+    msg = None
+    print("log3 start")
+    with open(output_file_3_1, 'w') as f:
+        f.write('Timestamp,q1,q2,q3,q4\n')
+
     # 초기 설정하고 미션 수행
     print("initial parameter set")
     param_name = b"MC_ROLLRATE_MAX"
     the_connection.mav.param_set_send(the_connection.target_system, the_connection.target_component, param_name, input_max, mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
 
     start_time = time.time()
+    heartbeat_check_time = time.time()
+    battery_status_time = time.time()
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -503,10 +580,14 @@ def log_attitude_3(the_connection, output_file):
                 msg = the_connection.recv_match()
             
             current_time = time.time()
-            run_time = start_time - current_time
-            if run_time > 300:
+            run_time = current_time - start_time
+            if run_time > 360:
                 print("Run time over 5 minutes!")
+                with open(bug_report_file, 'a') as f:
+                    f.write(f'{3},{input_max},{input_min}\n')
                 running_time_over = 1
+                re_launch()
+                reboot()
                 input_mutation(1)
                 break
 
@@ -529,13 +610,18 @@ def log_attitude_3(the_connection, output_file):
                     logging_started = True
 
                 if seq == (total_mission_items -1):
+                    logging_started = False
                     break
 
+            heartbeat_check_1 = time.time()
 
             if msg.get_type() == 'HEARTBEAT':
                 sys_status = msg.system_status
                 drone_mode_flag = msg.base_mode
-                if sys_status == (5 or 6):
+
+                heartbeat_check_time = time.time()
+
+                if sys_status == (6):
                     print("Drone is unsafe!")
                     input_mutation(1)
                     with open(bug_report_file, 'a') as f:
@@ -548,9 +634,32 @@ def log_attitude_3(the_connection, output_file):
 
                 elif drone_mode_flag == (25 or 153):
                     print("Drone Battery unhealthy!")
+                    with open(bug_report_file, 'a') as f:
+                        f.write(f'{3},{input_max},{input_min}\n')
                     re_launch()
                     reboot()
                     battery_healthy = 1
+                    break
+
+            if msg.get_type() == "BATTERY_STATUS":
+                battery_mode = msg.mode
+                battery_fail = msg.fault_bitmask
+
+                battery_status_time = time.time()
+
+            if abs(heartbeat_check_1 - battery_status_time) > 60:
+                print("------Battery Unhealthy!------")
+                re_launch()
+                reboot()
+                battery_healthy = 1
+                break
+
+            if heartbeat_check_1 - heartbeat_check_time > 20:
+                print("Drone heartbeat lost!")
+                re_launch()
+                reboot()
+                battery_healthy = 1
+                break
 
 
             msg = None
@@ -566,15 +675,16 @@ def log_attitude_3(the_connection, output_file):
 
 #Attitude log record
 def log_attitude_3_target(the_connection, output_file):
+    global system_reboot
+    global battery_healthy
+    global running_time_over
+    global logging_started
+    
     msg = None
-    logging_started = False
     print("log3 start")
     with open(output_file_3_2, 'w') as f:
         f.write('Timestamp,q1_d,q2_d,q3_d,q4_d\n')
 
-    global system_reboot
-    global battery_healthy
-    global running_time_over
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -601,6 +711,7 @@ def log_attitude_3_target(the_connection, output_file):
                     logging_started = True
 
                 if seq == (total_mission_items -1):
+                    logging_started = False
                     break
 
             if system_reboot == 1:
@@ -624,23 +735,26 @@ def log_attitude_3_target(the_connection, output_file):
 
 #Attitude log record
 def log_attitude_4(the_connection, output_file):
-    msg = None
-    logging_started = False
-    print("log4 start")
-    with open(output_file_4_1, 'w') as f:
-        f.write('Timestamp,q1,q2,q3,q4\n')
-
     global drone_status
     global system_reboot
     global crash_failsafe
     global battery_healthy
     global running_time_over
+    global logging_started
+    
+    msg = None
+    print("log4 start")
+    with open(output_file_4_1, 'w') as f:
+        f.write('Timestamp,q1,q2,q3,q4\n')
+
     # 초기 설정하고 미션 수행
     print("initial parameter set")
     param_name = b"MC_ROLLRATE_MAX"
     the_connection.mav.param_set_send(the_connection.target_system, the_connection.target_component, param_name, input_min, mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
 
     start_time = time.time()
+    heartbeat_check_time = time.time()
+    battery_status_time = time.time()
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -649,10 +763,14 @@ def log_attitude_4(the_connection, output_file):
                 msg = the_connection.recv_match()
             
             current_time = time.time()
-            run_time = start_time - current_time
-            if run_time > 300:
+            run_time = current_time - start_time
+            if run_time > 360:
                 print("Run time over 5 minutes!")
+                with open(bug_report_file, 'a') as f:
+                    f.write(f'{4},{input_max},{input_min}\n')
                 running_time_over = 1
+                re_launch()
+                reboot()
                 input_mutation(1)
                 break
 
@@ -675,12 +793,18 @@ def log_attitude_4(the_connection, output_file):
                     logging_started = True
 
                 if seq == (total_mission_items -1):
+                    logging_started = False
                     break
+
+            heartbeat_check_1 = time.time()
 
             if msg.get_type() == 'HEARTBEAT':
                 sys_status = msg.system_status
                 drone_mode_flag = msg.base_mode
-                if sys_status == (5 or 6):
+
+                heartbeat_check_time = time.time()
+
+                if sys_status == (6):
                     print("Drone is unsafe!")
                     input_mutation(1)
                     with open(bug_report_file, 'a') as f:
@@ -693,9 +817,32 @@ def log_attitude_4(the_connection, output_file):
 
                 elif drone_mode_flag == (25 or 153):
                     print("Drone Battery unhealthy!")
+                    with open(bug_report_file, 'a') as f:
+                        f.write(f'{4},{input_max},{input_min}\n')
                     re_launch()
                     reboot()
                     battery_healthy = 1
+                    break
+
+            if msg.get_type() == "BATTERY_STATUS":
+                battery_mode = msg.mode
+                battery_fail = msg.fault_bitmask
+
+                battery_status_time = time.time()
+
+            if abs(heartbeat_check_1 - battery_status_time) > 60:
+                print("------Battery Unhealthy!------")
+                re_launch()
+                reboot()
+                battery_healthy = 1
+                break
+
+            if heartbeat_check_1 - heartbeat_check_time > 20:
+                print("Drone heartbeat lost!")
+                re_launch()
+                reboot()
+                battery_healthy = 1
+                break
 
             msg = None
 
@@ -709,15 +856,16 @@ def log_attitude_4(the_connection, output_file):
 
 #Attitude log record
 def log_attitude_4_target(the_connection, output_file):
+    global system_reboot
+    global battery_healthy
+    global running_time_over
+    global logging_started
+    
     msg = None
-    logging_started = False
     print("log4 start")
     with open(output_file_4_2, 'w') as f:
         f.write('Timestamp,q1_d,q2_d,q3_d,q4_d\n')
 
-    global system_reboot
-    global battery_healthy
-    global running_time_over
     # ATTITUDE 메시지 구독
     while True:
         try:
@@ -744,6 +892,7 @@ def log_attitude_4_target(the_connection, output_file):
                     logging_started = True
 
                 if seq == (total_mission_items -1):
+                    logging_started = False
                     break
 
             if system_reboot == 1:
@@ -841,9 +990,16 @@ def case_sim_34(the_connection, mission_waypoints, file1, file2, i):
 def input_update1_2(the_connection):
     print("input update start")
     msg = None
-    logging_started = False
     rollrate_current = 0
     rollrate_target = 0
+    monitoring_start = False
+
+    global drone_status
+    global system_reboot
+    global crash_failsafe
+    global battery_healthy
+    global running_time_over
+    
 
     # ATTITUDE 메시지 구독
     while True:
@@ -852,7 +1008,7 @@ def input_update1_2(the_connection):
             while msg is None:
                 msg = the_connection.recv_match()
             
-            if logging_started:
+            if monitoring_start:
                 if msg.get_type() == 'ATTITUDE_TARGET':
                     # mission_item이 업데이트된 경우에만 로그 기록
                     timestamp = msg.time_boot_ms
@@ -875,10 +1031,17 @@ def input_update1_2(the_connection):
                 print(seq)
 
                 if seq == 1:
-                    logging_started = True
+                    monitoring_start = True
 
                 if seq == (total_mission_items -1):
+                    monitoring_start = False
                     break
+
+            if drone_status == (5 or 6):
+                break
+
+            if (battery_healthy or system_reboot or running_time_over or crash_failsafe)== 1:
+                break
 
             msg = None
 
@@ -895,9 +1058,15 @@ def input_update1_2(the_connection):
 def input_update2_1(the_connection):
     print("input update start")
     msg = None
-    logging_started = False
+    monitoring_start = False
     rollrate_current = 0
     rollrate_target = 0
+
+    global drone_status
+    global system_reboot
+    global crash_failsafe
+    global battery_healthy
+    global running_time_over
 
     # ATTITUDE 메시지 구독
     while True:
@@ -906,7 +1075,7 @@ def input_update2_1(the_connection):
             while msg is None:
                 msg = the_connection.recv_match()
             
-            if logging_started:
+            if monitoring_start:
                 if msg.get_type() == 'ATTITUDE_TARGET':
                     # mission_item이 업데이트된 경우에만 로그 기록
                     timestamp = msg.time_boot_ms
@@ -929,10 +1098,16 @@ def input_update2_1(the_connection):
                 print(seq)
 
                 if seq == 1:
-                    logging_started = True
+                    monitoring_start = True
 
                 if seq == (total_mission_items -1):
                     break
+
+            if drone_status == (5 or 6):
+                break
+
+            if (battery_healthy or system_reboot or running_time_over or crash_failsafe)== 1:
+                break
 
             msg = None
 
@@ -967,48 +1142,57 @@ def dtw_compute():
 
 
     # Extract the desired and estimated quaternion values for each case
-    q1_1d = desired1.iloc[1:-1, 1].astype(float)
-    q2_1d = desired1.iloc[1:-1, 2].astype(float)
-    q3_1d = desired1.iloc[1:-1, 3].astype(float)
-    q4_1d = desired1.iloc[1:-1, 4].astype(float)
+    q1_1d = desired1.iloc[1:-1, 1].astype(float) * 100
+    q2_1d = desired1.iloc[1:-1, 2].astype(float) * 100
+    q3_1d = desired1.iloc[1:-1, 3].astype(float) * 100
+    q4_1d = desired1.iloc[1:-1, 4].astype(float) * 100
 
-    q1_1 = estimated1.iloc[1:-1, 1].astype(float)
-    q2_1 = estimated1.iloc[1:-1, 2].astype(float)
-    q3_1 = estimated1.iloc[1:-1, 3].astype(float)
-    q4_1 = estimated1.iloc[1:-1, 4].astype(float)
+    q1_1 = estimated1.iloc[1:-1, 1].astype(float) * 100
+    q2_1 = estimated1.iloc[1:-1, 2].astype(float) * 100
+    q3_1 = estimated1.iloc[1:-1, 3].astype(float) * 100
+    q4_1 = estimated1.iloc[1:-1, 4].astype(float) * 100
 
     # Extract the desired and estimated quaternion values for the second case
-    q1_2d = desired2.iloc[1:-1, 1].astype(float)
-    q2_2d = desired2.iloc[1:-1, 2].astype(float)
-    q3_2d = desired2.iloc[1:-1, 3].astype(float)
-    q4_2d = desired2.iloc[1:-1, 4].astype(float)
+    q1_2d = desired2.iloc[1:-1, 1].astype(float) * 100
+    q2_2d = desired2.iloc[1:-1, 2].astype(float) * 100
+    q3_2d = desired2.iloc[1:-1, 3].astype(float) * 100
+    q4_2d = desired2.iloc[1:-1, 4].astype(float) * 100
 
-    q1_2 = estimated2.iloc[1:-1, 1].astype(float)
-    q2_2 = estimated2.iloc[1:-1, 2].astype(float)
-    q3_2 = estimated2.iloc[1:-1, 3].astype(float)
-    q4_2 = estimated2.iloc[1:-1, 4].astype(float)
-
-    # Extract the desired and estimated quaternion values for the third case
-    q1_3d = desired3.iloc[1:-1, 1].astype(float)
-    q2_3d = desired3.iloc[1:-1, 2].astype(float)
-    q3_3d = desired3.iloc[1:-1, 3].astype(float)
-    q4_3d = desired3.iloc[1:-1, 4].astype(float)
-
-    q1_3 = estimated3.iloc[1:-1, 1].astype(float)
-    q2_3 = estimated3.iloc[1:-1, 2].astype(float)
-    q3_3 = estimated3.iloc[1:-1, 3].astype(float)
-    q4_3 = estimated3.iloc[1:-1, 4].astype(float)
+    q1_2 = estimated2.iloc[1:-1, 1].astype(float) * 100
+    q2_2 = estimated2.iloc[1:-1, 2].astype(float) * 100
+    q3_2 = estimated2.iloc[1:-1, 3].astype(float) * 100
+    q4_2 = estimated2.iloc[1:-1, 4].astype(float) * 100
 
     # Extract the desired and estimated quaternion values for the third case
-    q1_4d = desired4.iloc[1:-1, 1].astype(float)
-    q2_4d = desired4.iloc[1:-1, 2].astype(float)
-    q3_4d = desired4.iloc[1:-1, 3].astype(float)
-    q4_4d = desired4.iloc[1:-1, 4].astype(float)
+    q1_3d = desired3.iloc[1:-1, 1].astype(float) * 100
+    q2_3d = desired3.iloc[1:-1, 2].astype(float) * 100
+    q3_3d = desired3.iloc[1:-1, 3].astype(float) * 100
+    q4_3d = desired3.iloc[1:-1, 4].astype(float) * 100
 
-    q1_4 = estimated4.iloc[1:-1, 1].astype(float)
-    q2_4 = estimated4.iloc[1:-1, 2].astype(float)
-    q3_4 = estimated4.iloc[1:-1, 3].astype(float)
-    q4_4 = estimated4.iloc[1:-1, 4].astype(float)
+    q1_3 = estimated3.iloc[1:-1, 1].astype(float) * 100
+    q2_3 = estimated3.iloc[1:-1, 2].astype(float) * 100
+    q3_3 = estimated3.iloc[1:-1, 3].astype(float) * 100
+    q4_3 = estimated3.iloc[1:-1, 4].astype(float) * 100
+
+    # Extract the desired and estimated quaternion values for the third case
+    q1_4d = desired4.iloc[1:-1, 1].astype(float) * 100
+    q2_4d = desired4.iloc[1:-1, 2].astype(float) * 100
+    q3_4d = desired4.iloc[1:-1, 3].astype(float) * 100
+    q4_4d = desired4.iloc[1:-1, 4].astype(float) * 100
+
+    q1_4 = estimated4.iloc[1:-1, 1].astype(float) * 100
+    q2_4 = estimated4.iloc[1:-1, 2].astype(float) * 100
+    q3_4 = estimated4.iloc[1:-1, 3].astype(float) * 100
+    q4_4 = estimated4.iloc[1:-1, 4].astype(float) * 100
+
+    variables = [q1_1d, q2_1d, q3_1d, q4_1d, q1_1, q2_1, q3_1, q4_1, q1_2d, q2_2d, q3_2d, q4_2d, q1_2, q2_2, q3_2, q4_2, q1_3d, q2_3d, q3_3d, q4_3d, q1_3, q2_3, q3_3, q4_3, q1_4d, q2_4d, q3_4d, q4_4d, q1_4, q2_4, q3_4, q4_4]
+
+    # 변수들의 사이즈 확인
+    for var in variables:
+        if len(var) == 0:
+            print("------------Log data was not collected------------")
+            return 4
+
 
     #q1에 대한 reference, estimated 비교
     q1_dtw1_1 = dtw.dtw(q1_1d, q1_1, keep_internals=True).distance
@@ -1057,7 +1241,7 @@ def dtw_compute():
     print("----------------------------")
 
     # 평가 후 input 변경
-    if (q1_dtw1_1 > 15) or (q2_dtw1_1 > 15) or (q3_dtw1_1 > 15) or (q4_dtw1_1 > 15):
+    if (q1_dtw1_1 > 1500) or (q2_dtw1_1 > 1500) or (q3_dtw1_1 > 1500) or (q4_dtw1_1 > 1500):
         print("case 1: invalid input was selected")
         # input 1은 유효하지 않음
         global input_max
@@ -1066,7 +1250,7 @@ def dtw_compute():
         del desired1, desired2, desired3, desired4, estimated1, estimated2, estimated3, estimated4
         return 2
 
-    if (q1_dtw1_2 > 15) or (q2_dtw1_2 > 15) or (q3_dtw1_2 > 15) or (q4_dtw1_2 > 15):
+    if (q1_dtw1_2 > 1500) or (q2_dtw1_2 > 1500) or (q3_dtw1_2 > 1500) or (q4_dtw1_2 > 1500):
         print("case 2: invalid input was selected")
         # input 2는 유효하지 않음
         global input_min
@@ -1075,7 +1259,7 @@ def dtw_compute():
         del desired1, desired2, desired3, desired4, estimated1, estimated2, estimated3, estimated4
         return 3
 
-    if (q1_dtw1_3 > 15) or (q2_dtw1_3 > 15) or (q3_dtw1_3 > 15) or (q4_dtw1_3 > 15):
+    if (q1_dtw1_3 > 1500) or (q2_dtw1_3 > 1500) or (q3_dtw1_3 > 1500) or (q4_dtw1_3 > 1500):
         print("case 3: vulnerable case found!")
         # input 1, 2 기록하고 케이스 넘버 또한 기록해야 함
         input_max
@@ -1084,7 +1268,7 @@ def dtw_compute():
             f.write(f'{3},{input_max},{input_min}\n')
         
 
-    if (q1_dtw1_4 > 15) or (q2_dtw1_4 > 15) or (q3_dtw1_4 > 15) or (q4_dtw1_4 > 15):
+    if (q1_dtw1_4 > 1500) or (q2_dtw1_4 > 1500) or (q3_dtw1_4 > 1500) or (q4_dtw1_4 > 1500):
         print("case 4: vulnerable case found!")
         # input 1, 2 기록하고 케이스 넘버 또한 기록해야 함
         input_max
@@ -1233,7 +1417,7 @@ if __name__ == "__main__":
 
         while flag:
 
-            count_loop += 1
+            count_loop += 1 # 반복 횟수 확인
             print(count_loop, " times loop executed")
 
             # mission 수행
@@ -1242,8 +1426,13 @@ if __name__ == "__main__":
                 output_file2 = f"output_file_{i}_2"
                 case_sim_12(the_connection, mission_waypoints, globals()[output_file1], globals()[output_file2], i)
                 if battery_healthy == 1:
-                    battery_healthy = 0
-                    case_sim_12(the_connection, mission_waypoints, globals()[output_file1], globals()[output_file2], i)
+                    #battery_healthy = 0
+                    #case_sim_12(the_connection, mission_waypoints, globals()[output_file1], globals()[output_file2], i)
+                    break
+                         
+            if battery_healthy == 1:
+                battery_healthy = 0
+                break
             
             if crash_failsafe == 1:
                 crash_failsafe = 0
@@ -1258,8 +1447,13 @@ if __name__ == "__main__":
                 output_file2 = f"output_file_{i}_2"
                 case_sim_34(the_connection, mission_waypoints, globals()[output_file1], globals()[output_file2], i)
                 if battery_healthy == 1:
-                    battery_healthy = 0
-                    case_sim_12(the_connection, mission_waypoints, globals()[output_file1], globals()[output_file2], i)
+                    #battery_healthy = 0
+                    #case_sim_12(the_connection, mission_waypoints, globals()[output_file1], globals()[output_file2], i)
+                    break
+
+            if battery_healthy == 1:
+                battery_healthy = 0
+                break
 
             if drone_status == 6:
                 re_launch()
@@ -1277,10 +1471,14 @@ if __name__ == "__main__":
             # DTW 계산
             sim_result = dtw_compute()
 
-            # vulnerable case 여부 파악
-            input_mutation(sim_result)
+            if sim_result == 4:
+                print("Simulation start again")
+                
+            else:
+                # vulnerable case 여부 파악
+                input_mutation(sim_result)
 
-            flag = bug_report_check(bug_report_file)
+                flag = bug_report_check(bug_report_file)
 
             #if (input_max == 1800 or input_min == 0):
                 #break
@@ -1289,7 +1487,7 @@ if __name__ == "__main__":
             print("Same bug reported!")
             print("done!")
 
-        if count_loop > 100:
+        if count_loop > 50:
             print("count_loop: ", count_loop)
             print("done!")
             break
